@@ -100,6 +100,7 @@
             uniform vec3 uColor, uColor2, uWireColor, uEmissionColor, uOutlineColor, uCursorLightPos;
             uniform float uEmissionIntensity, uChaos, uCursorLightIntensity, uFireSpeed, uFireScale, uFireIntensity, uTurbSpeed, uTurbScale;
             uniform float uShadowIntensity;
+            uniform float uSpecular, uRoughness, uMetalness;
             uniform bool uOutlineEnable, uOutlineEmissive, uUseEnvMap;
             uniform sampler2D uEnvMap2D;
             uniform vec3 uLightPos;
@@ -150,17 +151,27 @@
                 }
                 if (uChaos > 0.0) baseCol += (hash(uv + uTime) - 0.5) * uChaos;
                 
-                // Simple custom lighting (no Three.js includes needed)
+                // PBR-like lighting with specular and roughness
                 vec3 lightDir = normalize(uLightPos - vWorldPosition);
+                vec3 H = normalize(lightDir + V);
+                
                 float diff = max(dot(N, lightDir), 0.0);
-                vec3 ambient = vec3(0.4);
-                vec3 addedLights = ambient + vec3(1.0) * diff;
+                float shininess = mix(256.0, 4.0, uRoughness);
+                float spec = pow(max(dot(N, H), 0.0), shininess);
+                vec3 specColor = mix(vec3(1.0), baseCol, uMetalness) * spec * uSpecular;
+                
+                vec3 ambient = vec3(0.3) * baseCol;
+                vec3 envReflection = env * mix(0.04, 1.0, uMetalness) * (1.0 - uRoughness);
+                vec3 addedLights = ambient + baseCol * diff + specColor + envReflection;
                 
                 vec3 curL = normalize(uCursorLightPos - vWorldPosition);
+                vec3 curH = normalize(curL + V);
                 float curAtten = 1.0 / (1.0 + distance(uCursorLightPos, vWorldPosition) * 0.1);
-                addedLights += max(dot(N, curL), 0.0) * uCursorLightIntensity * curAtten;
+                float curDiff = max(dot(N, curL), 0.0);
+                float curSpec = pow(max(dot(N, curH), 0.0), shininess);
+                addedLights += (baseCol * curDiff + specColor * curSpec * 0.5) * uCursorLightIntensity * curAtten;
                 
-                vec3 finalColor = baseCol * addedLights;
+                vec3 finalColor = addedLights;
 
                 if (uRenderMode == 7) { // Chrome
                      finalColor = mix(finalColor * 0.1, env, 0.95);
@@ -323,7 +334,10 @@
                         uOutlineColor: { value: new THREE.Color(l.outlineColor) }, uOutlineEmissive: { value: l.outlineEmissive },
                         uEnvMap2D: { value: new THREE.Texture() }, uUseEnvMap: { value: false }, uLayerOffset: { value: i * 2.0 },
                         uShadowIntensity: { value: 0.3 },
-                        uLightPos: { value: new THREE.Vector3(15, 25, 15) }
+                        uLightPos: { value: new THREE.Vector3(15, 25, 15) },
+                        uSpecular: { value: 0.5 },
+                        uRoughness: { value: 0.3 },
+                        uMetalness: { value: 0.0 }
                     };
 
                     const mat = new THREE.ShaderMaterial({
